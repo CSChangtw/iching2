@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>易經多爻交互占測系統</title>
+
+    <!-- PWA -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="易經占測">
+    <meta name="theme-color" content="#8b4513">
+    <meta name="description" content="易經六十四卦占測，含卦辭、象傳、卦詩、推斷，支援多爻互動與之卦分析">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/x-icon" href="icons/favicon.ico">
+
+    <style>
+        :root { --primary: #8b4513; --bg: #fdfaf5; --danger: #d9534f; --dark: #333; --info-bg: #fffcf5; }
+        * { box-sizing: border-box; }
+        body { font-family: "PingFang TC", "Noto Serif TC", serif; background: var(--bg); margin: 0; padding: 15px; }
+        .container { max-width: 500px; margin: auto; background: #fff; padding: 20px; border: 1px solid #dcd3c1; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { text-align: center; color: var(--primary); font-size: 1.4em; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-top: 0; }
+
+        /* 安裝橫幅 */
+        #installBanner {
+            display: none;
+            background: linear-gradient(135deg, #8b4513, #a0522d);
+            color: #fff;
+            padding: 11px 14px;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.88em;
+        }
+        #installBanner span { flex: 1; }
+        #installBtn { background: #fff; color: var(--primary); border: none; padding: 6px 13px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.88em; white-space: nowrap; }
+        #dismissBtn { background: transparent; color: rgba(255,255,255,0.7); border: none; font-size: 1.2em; cursor: pointer; padding: 0 3px; line-height: 1; }
+
+        #drawBtn { background: var(--primary); color: #fff; border: none; padding: 15px 0; width: 100%; font-size: 1.1em; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 10px 0; display: block; }
+        #drawBtn:active { background: #5d2e0d; transform: scale(0.98); }
+
+        .result-grid { display: flex; justify-content: space-between; gap: 10px; margin-top: 20px; }
+        .gua-card { flex: 1; background: #f9f6f0; padding: 15px 5px; border-radius: 8px; border: 1px solid #eee; text-align: center; min-width: 0; }
+        .gua-name { font-size: 1.1em; font-weight: bold; margin-bottom: 15px; height: 1.5em; color: var(--primary); }
+
+        .line-stack { display: flex; flex-direction: column-reverse; align-items: center; gap: 10px; }
+        .item-row { position: relative; width: 80px; height: 16px; display: flex; align-items: center; justify-content: center; }
+
+        .base-line { width: 100%; height: 12px; transition: 0.3s; pointer-events: none; }
+        .yang { background: var(--dark); }
+        .yin { display: flex; justify-content: space-between; background: transparent !important; }
+        .yin::before, .yin::after { content: ""; width: 42%; height: 100%; background: var(--dark); }
+
+        .move-frame { position: absolute; top: -2px; left: -2px; width: calc(100% + 4px); height: calc(100% + 4px); border: 2px solid var(--danger); border-radius: 2px; cursor: pointer; z-index: 10; }
+        .move-dot { position: absolute; right: -22px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; background: var(--danger); border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.2); display: none; pointer-events: none; }
+        .move-frame.selected { background: rgba(217,83,79,0.15); border-width: 2.5px; }
+        .move-frame.selected + .move-dot { display: block; }
+
+        .analysis-box { margin-top: 20px; display: flex; flex-direction: column; }
+        .section { padding: 15px; background: var(--info-bg); border-radius: 8px; border-top: 4px solid var(--primary); margin-bottom: 15px; }
+        .chan-section { border-top-color: var(--danger); display: none; }
+
+        .info-title { font-weight: bold; color: var(--primary); font-size: 0.95em; margin-bottom: 8px; border-left: 3px solid var(--primary); padding-left: 8px; }
+        .chan-title { color: var(--danger); border-left-color: var(--danger); }
+
+        .label { font-weight: bold; color: #555; font-size: 0.9em; display: block; margin-top: 10px; border-bottom: 1px dotted #ccc; }
+        .info-text { font-size: 0.92em; line-height: 1.6; color: #444; padding: 5px 0 10px 0; text-align: justify; }
+        .hint { font-size: 0.85em; color: var(--danger); text-align: center; margin-top: 10px; }
+
+        /* 離線 Toast */
+        #offlineToast { display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 20px; border-radius: 20px; font-size: 0.85em; z-index: 999; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>易經 · 多爻交互占測</h1>
+
+    <div id="installBanner">
+        <span>📲 加入主畫面，隨時離線占測</span>
+        <button id="installBtn">安裝</button>
+        <button id="dismissBtn">✕</button>
+    </div>
+
+    <button id="drawBtn">冥想事由、誠心起卦</button>
+
+    <div id="displayArea" style="display:none;">
+        <div id="hintText" class="hint">● 點擊紅框可「選中/取消」變爻 ●</div>
+
+        <div class="result-grid">
+            <div class="gua-card">
+                <div class="info-title" style="border:none;">【本卦】</div>
+                <div id="oName" class="gua-name"></div>
+                <div id="oLines" class="line-stack"></div>
+            </div>
+            <div class="gua-card">
+                <div class="info-title" style="border:none;">【之卦】</div>
+                <div id="cName" class="gua-name">請選變爻...</div>
+                <div id="cLines" class="line-stack"></div>
+            </div>
+        </div>
+
+        <div class="analysis-box">
+            <div id="chanSection" class="section chan-section">
+                <div class="info-title chan-title" id="cTitle">之卦解析</div>
+                <span class="label">【卦辭】</span>
+                <div id="cJudge" class="info-text"></div>
+                <span class="label">【趨勢說明】</span>
+                <div id="cDesc" class="info-text"></div>
+                <span class="label">【卦詩】</span>
+                <div id="cQci" class="info-text"></div>
+                <span class="label">【推斷】</span>
+                <div id="cTui" class="info-text"></div>
+            </div>
+
+            <div class="section">
+                <div class="info-title">本卦解析</div>
+                <span class="label">【卦辭】</span>
+                <div id="oJudge" class="info-text"></div>
+                <span class="label">【象傳說明】</span>
+                <div id="oDesc" class="info-text"></div>
+                <span class="label">【卦詩】</span>
+                <div id="oQci" class="info-text"></div>
+                <span class="label">【推斷】</span>
+                <div id="oTui" class="info-text"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="offlineToast">⚠️ 目前離線，使用快取資料</div>
+
+<script>
+// ── 六十四卦資料庫 ──────────────────────────────────────────────────────────
+const DB = {
+    "111111": { n:"乾為天",   j:"元亨，利貞。",                                                                                                        d:"大象曰：天行健，君子以自強不息。象徵極致的剛健與動力。當下應積極進取，如同飛龍在天，但需防備過度膨脹導致「亢龍有悔」。",                                  q:"困龍得水好運交，不由喜氣上眉梢。一切謀望皆如意，向後時運漸漸高。",      t:"詞訟和順，病人痊癒，功名有成，求財大吉。" },
+    "000000": { n:"坤為地",   j:"元亨，利牝馬之貞。君子有攸往，先迷後得主，利西南得朋，東北喪朋。安貞吉。",                                              d:"大象曰：地勢坤，君子以厚德載物。象徵純粹的柔順與包容。目前不宜強出頭，應效法大地承載萬物，追隨強者或順應形勢方能獲吉。",                            q:"餓虎得食喜氣歡，求名應事主高遷。出門吉利行人到，是非口舌不相干。",      t:"找人得見，走失有信，疾病見好，凡事皆順。" },
+    "010001": { n:"水雷屯",   j:"元亨，利貞。勿用有攸往。利建侯。",                                                                                      d:"象徵萬物草創，充滿艱難。目前處於扎根時期，不宜躁進。應如同種子在土中積蓄能量，尋求有力助手，解決初步困境。",                                        q:"風刮亂絲不見頭，顛三倒四犯憂愁。慢行緩來頭有緒，急促反惹不自由。",      t:"疾病未好，婚姻不巧，口舌瑣碎，做事顛倒。" },
+    "100010": { n:"山水蒙",   j:"亨。匪我求童蒙，童蒙求我。初筮告，再三瀆，瀆則不告。利貞。",                                                            d:"蒙象徵啟蒙與迷霧。目前局勢模糊，代表智慧不足或情報不全。應放下成見，誠心請教導師，不可盲目摸索。",                                                    q:"卦中氣象犯小耗，謀望求財枉徒勞。婚姻合夥有人破，交易出行犯嘮叨。",      t:"為人仔細，掙錢費力，有心學好，小鬼偷去。" },
+    "111010": { n:"水天需",   j:"有孚，光亨，貞吉。利涉大川。",                                                                                          d:"需者，等待也。雲在天上而未成雨。目前應從容飲食宴樂，蓄積能量，等待最佳時機再行出擊，不可冒險硬衝。",                                                  q:"明珠土埋日久深，無光無毫到如今。忽然大風吹去土，自然顯露又重新。",      t:"謀望有成，婚姻最合，求財如意，也喜動挪。" },
+    "010111": { n:"天水訟",   j:"有孚，窒惕，中吉，終凶。利見大人，不利涉大川。",                                                                        d:"訟者，爭端也。目前極易產生口舌官非，應自我警惕，尋求中途和解。若堅持鬥爭到底，終將招致不可挽回的凶險。",                                              q:"二人爭路未肯降，佔著此卦費主張。交易出行有阻隔，生意合夥有平常。",      t:"月令不濟，光生閒氣，好事難成，求財費力。" },
+    "010000": { n:"地水師",   j:"貞，丈人吉，無咎。",                                                                                                    d:"師者，軍眾也。象徵憂患與紀律。目前需要強有力的領導與嚴格的自我約束，凝聚眾人之力，以正義之名應對挑戰。",                                              q:"將帥領旨去出征，騎著烈馬拉硬弓。百步穿楊去的准，箭射金錢喜氣生。",      t:"疾病大好，走失能找，行人有信，白事湊巧。" },
+    "000010": { n:"水地比",   j:"吉。原筮元永貞，無咎。不寧方來，後夫凶。",                                                                              d:"比者，親輔也。水在地上，相親相愛。目前適合作業交流、尋求盟友。應秉持誠信與他人和諧共處，切忌疑慮遲疑。",                                              q:"順風行船撒起棚，上天又助一篷風。不用費力逍遙去，任意而行大亨通。",      t:"走失可尋，見官有理，婚姻求名，保管恭喜。" },
+    "111011": { n:"風天小畜", j:"亨。密雲不雨，自我西郊。",                                                                                              d:"代表微小的蓄積。力量尚不足以左右大局。目前只能做小規模的嘗試或調整，應耐心修養，等待能量由小轉大。",                                                  q:"濃雲密排下雨難，盼望行人不見還。交易出行空費力，婚姻求謀是枉然。",      t:"月令中平，忍耐從容，疾病口舌，交節安寧。" },
+    "110111": { n:"天澤履",   j:"履虎尾，不咥人，亨。",                                                                                                  d:"履者，禮也。行走在老虎尾巴後方，處境極其危險。目前應恪守禮節、步步為營，以謙卑的心態行事，方能化險為夷。",                                            q:"俊鳥幸得出籠中，脫離災難顯威風。一朝得志凌雲去，東南西北任意行。",      t:"合夥如意，遷移如心，買賣興旺，求財十分。" },
+    "111000": { n:"地天泰",   j:"小往大來，吉亨。",                                                                                                      d:"泰者，通也。天地交泰，萬物紛紜。目前是和諧、通暢的黃金時期，資源豐沛計畫易成，但應居安思危，嚴防變局。",                                              q:"喜報三元運氣強，謀望求財大吉祥。交易出行多得意，是非口舌總無妨。",      t:"婚姻有成，行人即至，失物可尋，諸般湊巧。" },
+    "000111": { n:"天地否",   j:"否之匪人，不利君子貞。大往小來。",                                                                                      d:"否者，閉塞也。天地不交，溝通斷絕。目前處於運氣低迷期，小人得勢，計畫易受阻。應退守隱居保護自己，不宜進取。",                                          q:"虎落陷坑不堪言，前進容易退後難。謀望不遂自己便，疾病口舌有牽連。",      t:"占財可成，貴人遠行，出行不宜，事事晚成。" },
+    "101111": { n:"天火同人", j:"同人於野，亨。利涉大川。利君子貞。",                                                                                    d:"同人代表大同世界。目前利於擴展社交圈、進行遠行或大規模合作。應大公無私，尋求眾人的最大共識與支持。",                                                  q:"仙人指路過路通，勸君任意走西東。交易求財不費力，生意合夥也相通。",      t:"婚姻有成，行人歸來，走失可見，做事無差。" },
+    "111101": { n:"火天大有", j:"元亨。",                                                                                                                  d:"火在天上，象徵大放異彩。目前是收穫與富有的時刻，運勢如日中天。應秉持謙遜與公心回饋大眾，才能維持繁榮。",                                              q:"砍樹摸雀做事牢，是非口舌自然消。婚姻合夥不費力，若問走失未脫逃。",      t:"恍惚不做，拿穩下手，若求名利，到處自有。" },
+    "000100": { n:"地山謙",   j:"亨，君子有終。",                                                                                                        d:"山在地下，象徵深藏不露。謙卦是易經中極少數六爻皆吉之卦。目前只要保持謙卑、退讓一步，最終必能獲得吉利結果。",                                          q:"天賜貧人一封金，不用爭來二人分。彼此分得金到手，一切謀望皆遂心。",      t:"婚姻遂意，出外得地，交易合夥，無不吉利。" },
+    "001000": { n:"雷地豫",   j:"利建侯行師。",                                                                                                          d:"雷出地奮，象徵愉悅與預備。目前環境充滿活力，適合啟動大型計畫。但要注意不可過度沉溺享樂，需防範安逸帶來的疏忽。",                                        q:"青龍得意喜氣生，謀望求財事有成。婚姻出行無阻隔，是非口舌得安寧。",      t:"交易即成，行人即歸，頭緒有准，合夥有利。" },
+    "011001": { n:"隨",       j:"元亨利貞，無咎。",                                                                                                      d:"隨者，順也。目前不宜強推個人意志，應觀察大趨勢與他人的需求，隨機應變。順應天時，計畫自然水到渠成。",                                                    q:"推車拉磨道路干，謀望求財不費難。婚姻出行無阻隔，疾病口舌保平安。",      t:"苦極生榮，喜氣盈盈，一切做事，大運亨通。" },
+    "100110": { n:"蠱",       j:"元亨，利涉大川。先甲三日，後甲三日。",                                                                                  d:"蠱者，弊也。內部積弊已深。目前是改革最佳時機，應大膽割除舊疾，重新制定規則，利於進行徹底的轉型與整治。",                                              q:"卦中之象如推磨，順當為福反為禍。心中有數事改變，凡事盡從忙裡錯。",      t:"出行無益，行人未回，走失難見，諸事莫為。" },
+    "110000": { n:"地澤臨",   j:"元亨利貞。至于八月有凶。",                                                                                              d:"臨者，居高臨下。目前運勢正旺，事情有進展，利於管理視察。但「八月有凶」警告盛極必衰，應預先為未來下行做準備。",                                          q:"發政施仁志量高，出外求財任逍遙。交易婚姻大有意，走失行人有信耗。",      t:"口舌消散，疾病即痊，求名稱意，家宅平安。" },
+    "000011": { n:"風地觀",   j:"盥而不薦，有孚顒若。",                                                                                                  d:"觀者，觀摩。目前應放慢腳步，審視現狀。這是一個「看」勝過「做」的時期，誠信與莊重的形象是成功的核心。",                                                  q:"鵲遇天晚宿林中，不知林內先有鸛。雖然同處心生惡，卦外逢之事非輕。",      t:"先難後易，謀事不易，交過節令，憂愁變喜。" },
+    "101001": { n:"火雷噬嗑", j:"亨。利用獄。",                                                                                                          d:"象徵咬碎障礙。目前遇到了強大阻力或不公待遇，必須採取強硬手段果斷剷除。法律手段或嚴厲懲戒可能是必要路徑。",                                              q:"運拙如同身受饑，幸得送飯又遇食。適口充腸心歡喜，憂愁從此漸消移。",      t:"見官有理，出門見喜，婚姻成全，事事如意。" },
+    "100101": { n:"山火賁",   j:"亨。小利有攸往。",                                                                                                      d:"賁者，飾也。目前適合進行美化、包裝或公關宣傳。但要注意表象之下實質可能虛弱，不宜進行涉及根本的重大決策。",                                              q:"時來運轉銳氣周，窈窕淑女君子求。鍾古樂之大吉慶，佔著此卦喜臨頭。",      t:"出門吉祥，諸事順當，失物見得，月令高強。" },
+    "000001": { n:"山地剝",   j:"不利有攸往。",                                                                                                          d:"剝者，落也。目前處於不利衰退期，基礎動搖。應屏息以待，靜待壞運過去，切不可強行衝擊，否則必受損傷。",                                                  q:"花遇甘露旱逢河，生意買賣利息多。婚姻自有人來助，出門永不受折磨。",      t:"占訟得利，占病即愈，占信見得，謀事得意。" },
+    "100000": { n:"地雷復",   j:"亨。出入無疾，朋來無咎。反復其道，七日來復，利有攸往。",                                                                d:"復者，歸也。冬至一陽生。目前的低迷已到盡頭，生機正緩緩回升。應按部就班地恢復舊業，不要求快，踏實前進。",                                                q:"若占此卦不相和，憂疑愁閒無定奪。恩人無義反成怨，是非平地起風波。",      t:"尋人不見，心事不定，交節換月，自然安寧。" },
+    "111001": { n:"天雷無妄", j:"元亨利貞。其匪正有眚，不利有攸往。",                                                                                    d:"無妄者，不妄為。目前應遵循天理，保持誠信。即便發生意外災厄，只要問心無愧終能度過。切記不可投機取巧。",                                                  q:"鳥如籠中難出頭，佔著此卦不自由。謀望求財不定准，疾病憂犯口舌愁。",      t:"出門不遇，求財不利，婚姻走失，疾病不宜。" },
+    "100111": { n:"山天大畜", j:"利貞。不家食吉，利涉大川。",                                                                                            d:"代表強大的蓄積。目前具備足夠才華資源，不應枯守。適合出外發展、進修、或承擔重大的使命與挑戰。",                                                          q:"憂愁常鎖兩眉間，千頭萬緒掛心間。從今以後打開陣，任意而行不相干。",      t:"交節行人，出門大吉，好運有信，百事和順。" },
+    "100001": { n:"山雷頤",   j:"貞吉。觀頤，自求口實。",                                                                                                d:"頤代表口顎，象徵頤養。目前應注意言談分寸、飲食健康。照顧好身心靈的平衡，並思考自給自足之道，才是重心。",                                                q:"文王訪賢在渭濱，謀望求財事遂心。交易出行方如意，疾病口舌可離身。",      t:"渭水訪賢，大吉大利，佔著此卦，好了運氣。" },
+    "011110": { n:"澤風大過", j:"棟撓，利有攸往，亨。",                                                                                                  d:"代表負擔過重。象徵房屋支柱已彎曲。目前壓力已達極限，必須採取非常手段才能轉危為安。大膽突圍方能生還。",                                                  q:"夜夢金銀醒來空，求名求利大不通。婚姻難成交易散，走失行人不見蹤。",      t:"月令不和，好事難謀，凡事忍耐，休要琢磨。" },
+    "010010": { n:"坎為水",   j:"習坎，有孚，維心亨，行有尚。",                                                                                          d:"坎者，陷也。險難重重，如同水流陷阱。目前必須保持誠信與堅毅。不畏艱險持續前行，最終能如同流水般脫險。",                                                  q:"一路明月照水中，只見影兒不見蹤。愚人當財下去取，摸來摸去一場空。",      t:"求名不遂，疾病未癒，婚姻未成，合夥不利。" },
+    "101101": { n:"離為火",   j:"利貞，亨。畜牝牛，吉。",                                                                                                d:"離者，附也。象徵智慧光明。目前適合尋求可以依附的對象或事業。應保持溫順中正，如同火附木材方能持久。",                                                    q:"占此卦者遇天宮，富祿必然降人間。一切謀望皆吉慶，愁閒消散主平安。",      t:"月令皆善，諸事方便，出門見喜，災消病散。" },
+    "011100": { n:"澤山咸",   j:"亨，利貞，取女吉。",                                                                                                    d:"咸者，感也。象徵心靈感應。目前利於情感交流、求職、或尋求合作。只要心誠志堅，雙方能迅速產生共鳴。",                                                      q:"腳踏棒槌轉悠悠，時運不來莫強求。幸喜今日時運轉，自有好事在後頭。",      t:"謀望有成，出門可行，走失來信，疾病安寧。" },
+    "001110": { n:"雷風恆",   j:"亨，無咎，利貞，利有攸往。",                                                                                            d:"恆者，久也。目前不宜頻繁更換計畫，應持之以恆維持現狀。在變動中保持不變的初心，方能長久安穩。",                                                          q:"魚來撞網樂自然，卦占行人不久還。交易婚姻兩成就，謀望求財不費難。",      t:"出行湊巧，有病就好，雖有口舌，自然消了。" },
+    "001111": { n:"天山遯",   j:"亨，小利貞。",                                                                                                          d:"遯者，退也。見小人勢長主動隱退。目前不適合正面對抗，主動撤退保存實力才是明智之舉。隱藏鋒芒待時而動。",                                                  q:"濃雲遮日不光明，勸君切莫遠出行。婚姻求財皆不吉，須防口舌到門庭。",      t:"占病不安，訟事見官，功名不成，事不遂心。" },
+    "111100": { n:"雷天大壯", j:"利貞。",                                                                                                                d:"代表力量強大。目前充滿自信與行動力。但應注意過剛則易折，避免因衝動而陷入進退維谷的局面。",                                                              q:"卦占工師得大木，眼前該著走上路。時來運轉多順當，有事自管放心做。",      t:"出門吉利，口舌遠避，疾病皆除，行人即至。" },
+    "000101": { n:"火地晉",   j:"康侯用錫馬蕃庶，晝日三接。",                                                                                            d:"晉者，進也。如日東昇。目前運勢強勁，易獲提拔升遷。應趁此機會大展鴻圖，光明磊落行事必獲大吉。",                                                          q:"鋤地鋤去苗裡草，誰想財帛將人找，謀望求財皆如意，這個運氣也算好。",      t:"進退兩難，不敢強辯，撥雲見日，該你出現。" },
+    "101000": { n:"地火明夷", j:"利艱貞。",                                                                                                              d:"明夷象徵光明受損。目前處境艱難，才華受壓。應韜光養晦，外表顯得平庸內心保持清明，以此渡過黑暗期。",                                                      q:"時乖運拙走不著，急忙過河拆了橋。恩人無義反為怨，凡事無功枉受勞。",      t:"行人未至，頭緒不清，口舌緊避，凡事小心。" },
+    "101011": { n:"風火家人", j:"利女貞。",                                                                                                              d:"代表內部秩序。目前應回歸家庭或內部核心團隊，鞏固基本盤。只要內部安穩，外界變動就無法動搖根本。",                                                        q:"鏡裡觀花休認真，謀望求財不遂心。交易慢成婚姻散，走失行人無音信。",      t:"找人不遇，疾病未癒，求名不准，官事不宜。" },
+    "110101": { n:"火澤睽",   j:"小事吉。",                                                                                                              d:"睽者，乖離。象徵意見分歧。目前不適合大規模合作。應尋求「異中求同」，處理小事尚可，大事則難成。",                                                          q:"路上行人色匆匆，過河無橋遇薄冰。小心謹慎過得去，一步錯了落水中。",      t:"薄冰甚險，行人難禁，若占此卦，凡事小心。" },
+    "010100": { n:"水山蹇",   j:"利西南，不利東北。利見大人，貞吉。",                                                                                    d:"蹇者，跛行。前水後山。目前行事困難重重宜止不宜進。應尋求強者幫助，不宜獨力硬闖險境。",                                                                  q:"大雨傾地雪滿天，路上行人苦又難，拖泥帶水費盡力，事不遂心且耐煩。",      t:"行人未至，投向無門，好事難成，求名不准。" },
+    "001010": { n:"雷水解",   j:"利西南。無所往，其來復吉。有攸往，夙吉。",                                                                              d:"解者，散也。險難冰消瓦解。目前是解除束縛的好時機。宜快刀斬亂麻處理問題，計畫能迅速推展。",                                                              q:"五關脫難運抬頭，勸君須當把財求。交易出行有人助，疾病口舌不用愁。",      t:"疾病大好，行人來早，謀望成全，諸般湊巧。" },
+    "110001": { n:"山澤損",   j:"損下益上。有孚，元吉，無咎，可貞。利有攸往。",                                                                          d:"損者，減也。目前可能需要犧牲短期利益以追求長遠目標。只要誠信，暫時的損最終會轉化為大吉。",                                                              q:"時運不至費心多，比作推車受折磨。山路崎嶇掉了耳，左插右安安不著。",      t:"時運不遂，不可胡為，交節換月，自然奪魁。" },
+    "100011": { n:"風雷益",   j:"利有攸往。利涉大川。",                                                                                                  d:"益者，增也。目前處於成長擴張期，資源豐富環境友善。應抓住時機大膽前進，重大的冒險將獲得豐厚回報。",                                                      q:"時來運轉喜氣發，多年枯木又開花。枝葉重生多茂盛，幾人見了幾人誇。",      t:"交易有成，見官有理，走失得見，出門見喜。" },
+    "111110": { n:"澤天夬",   j:"揚于王庭。孚號，有厲。告自邑，不利即戎，利有攸往。",                                                                    d:"夬者，決也。目前處於決戰時刻，必須果斷與錯誤切割。應光明正大行事，不可採取陰謀手段防範反撲。",                                                          q:"遊蜂脫網喜無邊，添財進口福祿連。外則通達內則順，富貴榮華勝以前。",      t:"詞訟了結，疾病除根，求財到手，任意遂心。" },
+    "011111": { n:"天風姤",   j:"女壯，勿用取女。",                                                                                                      d:"姤者，遇也。目前會出現突發狀況或誘人機會，但隱含危險。不期而遇背後有陰影，保持警覺不可輕信。",                                                          q:"他鄉遇友喜氣歡，須知運氣福重添。自今交了順當運，向後保管不相干。",      t:"功名有成，家宅平安，失物得見，占病無妨。" },
+    "011000": { n:"澤地萃",   j:"亨。王假有廟。利見大人，亨，利貞。用大牲吉。利有攸往。",                                                                d:"萃者，聚也。精華匯聚。目前人脈旺盛適合整合資源。只要大家目標一致，能展現出強大的團體能量。",                                                            q:"鯉魚化龍喜氣來，口舌疾病永無災。愁疑從此都消散，禍門閉來福門開。",      t:"鯉魚化龍，喜氣重重，求財到手，做事有功。" },
+    "000110": { n:"地風升",   j:"元亨。用見大人，勿恤。南征吉。",                                                                                        d:"升者，向上。目前運勢步步高升，雖然進展慢但非常紮實。應積極尋求提拔勇敢前進，前途光明。",                                                                q:"指日離升氣象新，走失行人有音信。功名出行遂心好，疾病口舌皆除根。",      t:"求財到手，謀事可成，尋人得見，家宅安寧。" },
+    "011010": { n:"澤水困",   j:"亨，貞，大人吉，無咎。有言不信。",                                                                                      d:"困者，窮也。目前處於物質精神極大困境。此時多說無益沒人相信。應守正不阿磨練意志，終能脫困。",                                                            q:"時運不來有人欺，千方百計費商議。明明與你說好話，撮上桿去抽了梯。",      t:"當交君子，莫聽小人，凡事謹慎，永不受窮。" },
+    "010110": { n:"水風井",   j:"改邑不改井，無喪無得。往來井井。",                                                                                      d:"象徵恆常不變資源。目前應在原有基礎深耕，不宜隨意變換。透過分享價值，最終能獲得應有回饋。",                                                              q:"枯井破了已多年，一朝湧泉出水新。資生濟渴人稱羨，時來運轉樂自然。",      t:"精神漸爽，富祿日增，出入皆吉，百事亨通。" },
+    "101110": { n:"澤火革",   j:"己日乃孚。元亨利貞，悔亡。",                                                                                            d:"革者，改也。象徵徹底轉型。目前現狀無法維持必須大膽改革。只要動機純正時機成熟，最終必獲大眾信任。",                                                      q:"苗逢旱天漸漸衰，幸得天恩降雨來。憂去喜來能變化，求謀諸事遂心懷。",      t:"出行大吉，走失能找，行人來信，百般湊巧。" },
+    "011101": { n:"火風鼎",   j:"元吉，亨。",                                                                                                            d:"鼎者，重器。象徵權力安穩與革新。目前時來運轉適合開啟新事業。只要穩重如鼎重視賢才，能成就大業。",                                                        q:"若占此卦喜自然，求名求利兩周全。婚姻合夥皆如意，生意興隆樂自然。",      t:"出門有益，交易可成，官事無妨，諸事安寧。" },
+    "001001": { n:"震為雷",   j:"亨。震來虩虩，笑言啞啞。震驚百里，不喪匕鬯。",                                                                          d:"目前會發生驚心動魄突發事件令人恐懼。只要處變不驚自我反省，最終能轉危為安，收穫平安吉祥。",                                                              q:"占者逢之撞金鐘，時來運轉響一聲。謀事求財不費力，交易合夥大亨通。",      t:"求名遂意，做事遂心，走失行人，自然有音。" },
+    "100100": { n:"艮為山",   j:"艮其背，不獲其身。行其庭，不見其人。無咎。",                                                                            d:"止其所當止。外界誘惑動亂不應影響內心平靜。目前應進入靜養修心狀態，不採取任何行動，知止不殆。",                                                          q:"財帛常打心中走，可惜眼前難到手。不如一時且忍耐，遇著閒事休開口。",      t:"好事難成，走失難尋，凡事謹慎，交節安寧。" },
+    "001011": { n:"風山漸",   j:"女歸吉，利貞。",                                                                                                        d:"漸者，進也。不要求快，應遵循正確程序循序漸進。雖然進展緩慢但發展健康持久，最終必獲大功。",                                                              q:"鳳凰落在西岐山，長鳴幾聲出聖賢。天降文王開基業，富貴榮華八百年。",      t:"出門有益，求財必准，疾病皆除，諸事平穩。" },
+    "110100": { n:"雷澤歸妹", j:"征凶，無攸利。",                                                                                                        d:"象徵順序混亂急功近利。目前的發展可能名不正言不順。若強行推動將招致凶險失敗，守正為要。",                                                                q:"求魚須當向水中，樹上求之不順情。受盡爬揭難遂意，勞而無功事不成。",      t:"月令不好，做事顛倒，打算到手，遂心的少。" },
+    "101100": { n:"雷火豐",   j:"亨，王假之。勿憂，宜日中。",                                                                                            d:"豐者，盛也。象徵繁榮巔峰。目前資源名望均達極限。應記住日中則昃，在輝煌時必須防範即將到來的衰落。",                                                      q:"古鏡昏暗好幾年，一朝磨明似月圓。君子謀事占此卦，時來運轉樂自然。",      t:"出行有益，交易得利，疾病見好，求名遂意。" },
+    "001101": { n:"火山旅",   j:"小亨，旅貞吉。",                                                                                                        d:"旅者，客也。目前處於不安定流動狀態，適合旅行出差。應保持謙虛低調，客居在外守正方能平安。",                                                              q:"飛鳥樹上築高巢，小人使計用火燒。如占此卦大不利，一切謀望枉徒勞。",      t:"求財費力，行人未還，走失無信，找事也難。" },
+    "011011": { n:"巽為風",   j:"小亨。利有攸往，利見大人。",                                                                                            d:"巽者，入也。目前應發揮柔順滲透力深入了解。適合溝通傳達資訊。尋求大人引薦能事半功倍。",                                                                  q:"泛舟得水離沙灘，出外行人早回家。是非口舌皆無礙，婚姻合夥更不差。",      t:"功名稱意，求財得利，交易可成，疾病痊癒。" },
+    "110110": { n:"兌為澤",   j:"亨，利貞。",                                                                                                            d:"象徵歡樂交流。目前適合溝通談判或娛樂活動。應以誠悅之心待人，但要防範口舌是非與情緒管理。",                                                              q:"這個卦象真有趣，覺著做事不費力。休要錯過這機會，事事就覺遂心意。",      t:"口舌消散，疾病痊癒，求財到手，謀事遂心。" },
+    "110011": { n:"風澤中孚", j:"豚魚吉。利涉大川，利貞。",                                                                                              d:"中孚者，信也。目前最重要是誠信。只要內心篤實，不論面對多大險阻都能獲得他人信任與支持。",                                                              q:"此卦佔之運氣歹，如同太公做買賣。販豬羊快販牛遲，豬羊齊販斷了宰。",      t:"占名不利，占利不全，疾病不愈，做事更難。" },
+    "001100": { n:"雷山小過", j:"亨，利貞。可小事，不可大事。飛鳥遺之音，不宜上宜下，大吉。",                                                            d:"目前處境不宜志向過大。應腳踏實地向下扎根，細節嚴謹是吉利的。不宜向上攀升應向下守成。",                                                                q:"行人路過獨木橋，心內惶恐眼裡跳。爽利保保過得去，慢行一步不安牢。",      t:"求財到手，官事平常，目下不吉，交節自強。" },
+    "101010": { n:"水火既濟", j:"亨小，利貞。初吉終亂。",                                                                                                d:"既濟代表功德圓滿。目前一切井然有序看似完美。但這正是危機開端應防微杜漸，防範末尾鬆懈導致潰敗。",                                                        q:"金榜之上題姓名，不負當年苦用功。人逢此卦多吉慶，一切謀望大亨通。",      t:"月令吉善，找人尋見，走失能找，口舌消散。" },
+    "010101": { n:"火水未濟", j:"亨。小狐汔濟，濡其尾，無攸利。",                                                                                        d:"未濟代表尚未完成。目前處境雖有缺憾但充滿可能。只要謹慎踏出最後一步小心過河，終能獲得成功。",                                                          q:"太歲入運事多愁，婚姻財帛莫強求。交易出門走見吉，走失行人不露頭。",      t:"官訟不吉，口舌有災，目下忍耐，過月無妨。" }
+};
+
+// ── 占卜邏輯 ─────────────────────────────────────────────────────────────────
+let currentLines = [];
+let selectedIndexes = new Set();
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('drawBtn').addEventListener('click', startGua);
+});
+
+function startGua() {
+    currentLines = [];
+    selectedIndexes.clear();
+    document.getElementById('chanSection').style.display = 'none';
+    document.getElementById('cName').innerText = "請選變爻...";
+    document.getElementById('cLines').innerHTML = "";
+
+    for (let i = 0; i < 6; i++) {
+        let r = Math.floor(Math.random() * 8) + 1;
+        currentLines.push(r === 1 ? 6 : r <= 4 ? 7 : r <= 7 ? 8 : 9);
+    }
+
+    document.getElementById('displayArea').style.display = 'block';
+    const code = currentLines.map(s => (s === 7 || s === 9) ? "1" : "0").join("");
+    const oG = DB[code] || { n:"未知卦", j:"無卦辭", d:"無說明", q:"", t:"" };
+
+    document.getElementById('oName').innerText  = oG.n;
+    document.getElementById('oJudge').innerText = oG.j;
+    document.getElementById('oDesc').innerText  = oG.d;
+    document.getElementById('oQci').innerText   = oG.q || '';
+    document.getElementById('oTui').innerText   = oG.t || '';
+    renderOriginal();
+}
+
+function renderOriginal() {
+    const container = document.getElementById('oLines');
+    container.innerHTML = "";
+    currentLines.forEach((v, idx) => {
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        const isY = (v === 7 || v === 9);
+        const canM = (v === 6 || v === 9);
+        let h = `<div class="base-line ${isY ? 'yang' : 'yin'}"></div>`;
+        if (canM) h += `<div class="move-frame" id="f-${idx}"></div><div class="move-dot"></div>`;
+        row.innerHTML = h;
+        container.appendChild(row);
+        if (canM) document.getElementById(`f-${idx}`).addEventListener('click', function() { toggleSelection(idx, this); });
+    });
+}
+
+function toggleSelection(idx, el) {
+    if (selectedIndexes.has(idx)) { selectedIndexes.delete(idx); el.classList.remove('selected'); }
+    else { selectedIndexes.add(idx); el.classList.add('selected'); }
+    updateChanged();
+}
+
+function updateChanged() {
+    if (selectedIndexes.size === 0) {
+        document.getElementById('chanSection').style.display = 'none';
+        document.getElementById('cName').innerText = "等待選爻...";
+        document.getElementById('cLines').innerHTML = "";
+        return;
+    }
+    const arr = currentLines.map(s => (s === 7 || s === 9) ? "1" : "0");
+    selectedIndexes.forEach(i => arr[i] = arr[i] === "1" ? "0" : "1");
+    const code = arr.join("");
+    const cG = DB[code] || { n:"變化卦", j:"經文讀取中...", d:"組合變化複雜，建議參考原卦精神。", q:"", t:"" };
+
+    const cL = document.getElementById('cLines');
+    cL.innerHTML = "";
+    arr.forEach(bit => {
+        const row = document.createElement('div');
+        row.className = 'item-row';
+        row.innerHTML = `<div class="base-line ${bit === '1' ? 'yang' : 'yin'}"></div>`;
+        cL.appendChild(row);
+    });
+
+    document.getElementById('chanSection').style.display = 'block';
+    document.getElementById('cName').innerText  = cG.n;
+    document.getElementById('cJudge').innerText = cG.j;
+    document.getElementById('cDesc').innerText  = cG.d;
+    document.getElementById('cQci').innerText   = cG.q || '';
+    document.getElementById('cTui').innerText   = cG.t || '';
+    document.getElementById('cTitle').innerText = `之卦解析 (${selectedIndexes.size}爻發動)`;
+}
+
+// ── PWA ──────────────────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(r => console.log('SW:', r.scope))
+            .catch(e => console.warn('SW fail:', e));
+    });
+}
+
+let deferredPrompt = null;
+const banner = document.getElementById('installBanner');
+window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    banner.style.display = 'flex';
+});
+document.getElementById('installBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    banner.style.display = 'none';
+});
+document.getElementById('dismissBtn').addEventListener('click', () => banner.style.display = 'none');
+window.addEventListener('appinstalled', () => banner.style.display = 'none');
+
+const toast = document.getElementById('offlineToast');
+window.addEventListener('offline', () => { toast.style.display = 'block'; setTimeout(() => toast.style.display = 'none', 3000); });
+window.addEventListener('online',  () => toast.style.display = 'none');
+if (!navigator.onLine) toast.style.display = 'block';
+</script>
+</body>
+</html>
