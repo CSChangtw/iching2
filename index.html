@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>易經多爻交互占測系統</title>
+
+    <!-- PWA -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="易經占測">
+    <meta name="theme-color" content="#8b4513">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+
     <style>
         :root { --primary: #8b4513; --bg: #fdfaf5; --danger: #d9534f; --dark: #333; --info-bg: #fffcf5; }
         body { font-family: "PingFang TC", "Noto Serif TC", serif; background: var(--bg); margin: 0; padding: 15px; }
@@ -48,13 +59,65 @@
         .mutual-section { border-top-color: var(--mutual) !important; display: none; }
         .mutual-title { color: var(--mutual) !important; border-left-color: var(--mutual) !important; }
         #hintMutual { font-size: 0.85em; color: var(--mutual); text-align: center; margin-top: 0; margin-bottom: 4px; display: none; }
+
+        /* PWA 安裝按鈕 */
+        #installWrap { margin-bottom: 12px; }
+        #installBtn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; background: linear-gradient(135deg, #8b4513, #a0522d);
+            color: #fff; border: none; padding: 11px 0; border-radius: 8px;
+            font-size: 1em; font-family: inherit; font-weight: bold; cursor: pointer;
+        }
+        #installBtn:active { opacity: 0.85; transform: scale(0.98); }
+        #iosModal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55); z-index: 1000;
+            align-items: flex-end; justify-content: center;
+        }
+        #iosModal.show { display: flex; }
+        #iosBox {
+            background: #fff; border-radius: 16px 16px 0 0;
+            padding: 24px 20px 36px; width: 100%; max-width: 500px;
+            font-size: 0.95em; line-height: 1.7;
+        }
+        #iosBox h3 { margin: 0 0 14px; color: var(--primary); font-size: 1.05em; text-align: center; }
+        #iosBox ol { margin: 0; padding-left: 20px; color: #333; }
+        #iosBox li { margin-bottom: 6px; }
+        #iosBox .tag { background: #f0ebe3; border-radius: 4px; padding: 1px 6px; }
+        #iosClose {
+            display: block; margin: 20px auto 0;
+            background: var(--primary); color: #fff; border: none;
+            border-radius: 8px; padding: 10px 32px;
+            font-size: 0.95em; font-family: inherit; cursor: pointer;
+        }
+        #offlineToast {
+            display: none; position: fixed; bottom: 20px; left: 50%;
+            transform: translateX(-50%); background: #333; color: #fff;
+            padding: 8px 20px; border-radius: 20px; font-size: 0.85em; z-index: 999;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>易經 · 多爻交互占測</h1>
+    <div id="installWrap">
+        <button id="installBtn">📲 安裝 App，離線也能占卦</button>
+    </div>
+
     <button id="drawBtn">冥想事由、誠心起卦</button>
+
+    <div id="iosModal">
+        <div id="iosBox">
+            <h3>☯ 加入主畫面</h3>
+            <ol>
+                <li>點下方 <span class="tag">分享</span> 按鈕 ☐↑</li>
+                <li>向下滑找到 <span class="tag">加入主畫面</span></li>
+                <li>點右上角「新增」完成安裝</li>
+            </ol>
+            <button id="iosClose">知道了</button>
+        </div>
+    </div>
 
     <div id="displayArea" style="display:none;">
         <div id="hintText" class="hint">● 點擊紅框可「選中/取消」變爻 ●</div>
@@ -333,5 +396,65 @@ renderOriginal = function() {
     document.getElementById('hintMutual').style.display = 'block';
 };
 </script>
+<div id="offlineToast">⚠️ 目前離線，使用快取資料</div>
+
+<script>
+// ── PWA ───────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () =>
+        navigator.serviceWorker.register('./sw.js')
+            .then(r => console.log('SW:', r.scope))
+            .catch(e => console.warn('SW fail:', e))
+    );
+}
+
+const installWrap = document.getElementById('installWrap');
+const installBtn  = document.getElementById('installBtn');
+const iosModal    = document.getElementById('iosModal');
+const iosClose    = document.getElementById('iosClose');
+const toast       = document.getElementById('offlineToast');
+
+const isIOS        = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                  || navigator.standalone === true;
+
+let deferredPrompt = null;
+
+if (isStandalone) {
+    installWrap.style.display = 'none';
+} else if (isIOS) {
+    installBtn.addEventListener('click', () => iosModal.classList.add('show'));
+    iosClose.addEventListener('click',   () => iosModal.classList.remove('show'));
+    iosModal.addEventListener('click', e => {
+        if (e.target === iosModal) iosModal.classList.remove('show');
+    });
+} else {
+    installBtn.style.opacity = '0.65';
+    window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.opacity = '1';
+    });
+    installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) {
+            alert('請使用瀏覽器選單（⋮）→「新增至主畫面」安裝。');
+            return;
+        }
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        deferredPrompt = null;
+        if (outcome === 'accepted') installWrap.style.display = 'none';
+    });
+    window.addEventListener('appinstalled', () => installWrap.style.display = 'none');
+}
+
+window.addEventListener('offline', () => {
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 3000);
+});
+window.addEventListener('online', () => toast.style.display = 'none');
+if (!navigator.onLine) toast.style.display = 'block';
+</script>
+
 </body>
 </html>

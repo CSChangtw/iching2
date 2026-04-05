@@ -1,7 +1,7 @@
 {
   "name": "易經多爻交互占測系統",
   "short_name": "易經占測",
-  "description": "易經六十四卦占測，含卦辭、象傳、卦詩、推斷，支援多爻互動與之卦分析",
+  "description": "易經六十四卦占測，含互卦、卦詩、推斷，支援多爻互動與之卦分析",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
