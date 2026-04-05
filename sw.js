@@ -1,4 +1,4 @@
-const CACHE_NAME = 'iching-v2';
+const CACHE_NAME = 'iching-v3';
 const ASSETS = [
   './', './index.html', './manifest.json',
   './icon-72.png', './icon-96.png', './icon-128.png',
